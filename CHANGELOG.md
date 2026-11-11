@@ -3,6 +3,34 @@
 All notable changes to this project are recorded here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.0.2] — 2026-11-11
+
+### Fixed
+
+- **`build.sh` could select a JRE and hand it to Gradle**, producing
+  *"Toolchain installation ... does not provide the required capabilities:
+  [JAVA_COMPILER]"* — the very error the script exists to prevent.
+
+  The check asked whether `javac` existed in a candidate directory and ran.
+  Debian's `update-alternatives` can leave a `javac` symlink *inside a JRE*
+  that points at a different JDK's compiler: it runs perfectly, so the check
+  passed, but Gradle still rejected the installation because it has no compiler
+  of its own. Gradle keys off the `javac` binary belonging to the installation,
+  not off the compiler module — which the JRE package does ship, so testing
+  `ToolProvider.getSystemJavaCompiler()` would not have caught this either.
+
+  A candidate's `javac` must now resolve to exactly `<home>/bin/javac`. That
+  also stops `/usr` being mistaken for a JDK home, since its `javac` really
+  lives under `/usr/lib/jvm`.
+
+### Added
+
+- `tools/test-find-jdk.sh` — six tests for the JDK lookup: a real JDK is
+  honoured, a nonexistent path falls through, a JRE borrowing another JDK's
+  `javac` is rejected, a failing `javac` stub is rejected, a JDK older than 17
+  is rejected, and a machine with no JDK explains itself and exits non-zero.
+  Run in CI on every architecture.
+
 ## [1.0.1] — 2026-11-11
 
 Portability fix. No change to what the extension does.

@@ -55,8 +55,10 @@ jobs:
       # build.sh and the UI harness find a JDK without any hardcoded path.
       # A README once hardcoded an arm64 path and broke every x86_64 build.
       - name: Check the JDK lookup works unaided
-        run: |
-          env -u JAVA_HOME ./build.sh test
+        run: env -u JAVA_HOME ./build.sh test
+
+      - name: Test the JDK lookup itself
+        run: ./tools/test-find-jdk.sh
 
       - name: Upload extension jar
         if: matrix.name == 'linux-amd64'

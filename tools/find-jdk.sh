@@ -10,11 +10,42 @@
 # path. This file is the only place in the project allowed to know where JDKs
 # are kept.
 
-# A directory is only a JDK if its javac actually runs. macOS ships a
-# /usr/bin/javac stub that exists but exits non-zero when no JDK is installed,
-# which would otherwise be mistaken for JAVA_HOME=/usr.
+_resolve_link() {
+    # readlink -f is GNU and recent-macOS only; walk the links by hand otherwise.
+    if readlink -f "$1" >/dev/null 2>&1; then
+        readlink -f "$1"
+    else
+        local target="$1"
+        while [ -L "$target" ]; do target=$(readlink "$target"); done
+        printf '%s' "$target"
+    fi
+}
+
+# A directory is only a JDK if it owns a working javac.
+#
+# Three ways a directory can look like a JDK and not be one:
+#  * macOS ships a /usr/bin/javac stub that exists but exits non-zero when no
+#    JDK is installed, which would make JAVA_HOME=/usr look valid.
+#  * Debian's update-alternatives can leave a javac symlink inside a JRE that
+#    points at a different JDK's compiler. It runs perfectly, so a naive check
+#    passes, but Gradle still rejects the JRE with "does not provide the
+#    required capabilities: [JAVA_COMPILER]" because the installation itself
+#    has no compiler. Gradle keys off the javac binary belonging to the
+#    installation, not off the compiler module, which the JRE package ships.
+#  * /usr looks like a JDK home because /usr/bin/javac exists, but its javac
+#    really lives under /usr/lib/jvm.
+#
+# Requiring javac to resolve to exactly <home>/bin/javac rules out all three.
 _is_jdk() {
-    [ -n "$1" ] && [ -x "$1/bin/javac" ] && "$1/bin/javac" -version >/dev/null 2>&1
+    [ -n "$1" ] || return 1
+    [ -x "$1/bin/javac" ] || return 1
+
+    local real_javac real_home
+    real_javac=$(_resolve_link "$1/bin/javac")
+    real_home=$(_resolve_link "$1")
+    [ "$real_javac" = "$real_home/bin/javac" ] || return 1
+
+    "$1/bin/javac" -version >/dev/null 2>&1
 }
 
 # 17 is the project's release target; anything older cannot build it.
@@ -31,17 +62,6 @@ _try_jdk() {
         return 0
     fi
     return 1
-}
-
-_resolve_link() {
-    # readlink -f is GNU and recent-macOS only; walk the links by hand otherwise.
-    if readlink -f "$1" >/dev/null 2>&1; then
-        readlink -f "$1"
-    else
-        local target="$1"
-        while [ -L "$target" ]; do target=$(readlink "$target"); done
-        printf '%s' "$target"
-    fi
 }
 
 _find_jdk() {
