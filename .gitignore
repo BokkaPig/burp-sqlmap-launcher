@@ -1,0 +1,22 @@
+# Gradle
+.gradle/
+build/
+
+# Java
+*.class
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
+
+# Local scratch
+*.log

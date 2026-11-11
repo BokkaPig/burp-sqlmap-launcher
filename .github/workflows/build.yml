@@ -1,0 +1,73 @@
+name: build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-amd64
+            runner: ubuntu-latest
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+          - name: macos-arm64
+            runner: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Lets the tamper-discovery tests run for real instead of skipping.
+      - name: Install sqlmap (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y sqlmap
+
+      - name: Install sqlmap (macOS)
+        if: runner.os == 'macOS'
+        run: brew install sqlmap
+
+      - name: Build and test
+        run: ./gradlew build --no-daemon
+
+      # The jar is architecture-independent bytecode and is built reproducibly,
+      # so this checksum must match across every job in the matrix. If it ever
+      # differs, something architecture-specific has crept into the build.
+      - name: Checksum the jar
+        run: shasum -a 256 build/burp-sqlmap-launcher.jar
+
+      # build.sh and the UI harness find a JDK without any hardcoded path.
+      # A README once hardcoded an arm64 path and broke every x86_64 build.
+      - name: Check the JDK lookup works unaided
+        run: |
+          env -u JAVA_HOME ./build.sh test
+
+      - name: Upload extension jar
+        if: matrix.name == 'linux-amd64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: burp-sqlmap-launcher
+          path: build/burp-sqlmap-launcher.jar
+
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ matrix.name }}
+          path: build/reports/tests/test
