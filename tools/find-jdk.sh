@@ -21,24 +21,50 @@ _resolve_link() {
     fi
 }
 
-# A directory is only a JDK if it owns a working javac.
+# Gradle decides an installation can compile by checking that javac, javadoc
+# and jar all exist under it. It does not run them. An installation missing any
+# one is rejected with "does not provide the required capabilities:
+# [JAVA_COMPILER]" - so this must check the same three, or it will hand Gradle
+# a JDK that Gradle then refuses.
+_JDK_TOOLS="javac javadoc jar"
+
+# Names the required tools a candidate is missing, empty if it has them all.
+_missing_tools() {
+    local tool missing=""
+    for tool in $_JDK_TOOLS; do
+        [ -x "$1/bin/$tool" ] || missing="$missing $tool"
+    done
+    printf '%s' "${missing# }"
+}
+
+# A directory is only a JDK if it owns all three tools and its javac runs.
 #
-# Three ways a directory can look like a JDK and not be one:
+# Ways a directory can look like a JDK and not be one:
+#  * It has javac but not javadoc or jar - a part-installed or split package.
+#    Gradle refuses it even though javac works perfectly.
 #  * macOS ships a /usr/bin/javac stub that exists but exits non-zero when no
 #    JDK is installed, which would make JAVA_HOME=/usr look valid.
 #  * Debian's update-alternatives can leave a javac symlink inside a JRE that
-#    points at a different JDK's compiler. It runs perfectly, so a naive check
-#    passes, but Gradle still rejects the JRE with "does not provide the
-#    required capabilities: [JAVA_COMPILER]" because the installation itself
-#    has no compiler. Gradle keys off the javac binary belonging to the
-#    installation, not off the compiler module, which the JRE package ships.
+#    points at a different JDK's compiler. It runs, so a naive check passes.
 #  * /usr looks like a JDK home because /usr/bin/javac exists, but its javac
 #    really lives under /usr/lib/jvm.
 #
-# Requiring javac to resolve to exactly <home>/bin/javac rules out all three.
+# Requiring all three tools, and javac to resolve to exactly <home>/bin/javac,
+# rules out all four.
 _is_jdk() {
     [ -n "$1" ] || return 1
-    [ -x "$1/bin/javac" ] || return 1
+
+    local missing
+    missing=$(_missing_tools "$1")
+    if [ -n "$missing" ]; then
+        # Remember near misses so the failure message can name the problem
+        # instead of just saying nothing was found.
+        if [ -x "$1/bin/javac" ]; then
+            _incomplete="${_incomplete}  $1 (missing: $missing)
+"
+        fi
+        return 1
+    fi
 
     local real_javac real_home
     real_javac=$(_resolve_link "$1/bin/javac")
@@ -101,6 +127,8 @@ _consider() {
 }
 
 _find_jdk() {
+    _incomplete=""
+
     # An explicitly set, valid JAVA_HOME wins outright; the caller meant it.
     _try_jdk "${JAVA_HOME:-}" && return 0
 
@@ -134,6 +162,30 @@ _find_jdk() {
 }
 
 if ! _find_jdk; then
+    if [ -n "${_incomplete:-}" ]; then
+        cat >&2 <<MSG
+No usable JDK found, but these installations are incomplete:
+
+$_incomplete
+Gradle requires javac, javadoc and jar to all be present, so it refuses an
+installation missing any of them with "does not provide the required
+capabilities: [JAVA_COMPILER]" - even though javac itself works.
+
+On Debian, Kali and Ubuntu the full compiler set is in the -jdk-headless
+package, so reinstalling it usually fixes this:
+
+  sudo apt install --reinstall openjdk-25-jdk-headless openjdk-25-jdk
+
+Or install a different version alongside it, which this script will prefer:
+
+  sudo apt install openjdk-21-jdk
+
+MSG
+        unset -f _is_jdk _jdk_is_new_enough _jdk_rank _consider _try_jdk _resolve_link _missing_tools _find_jdk
+        unset _best _best_rank _incomplete
+        return 1 2>/dev/null || exit 1
+    fi
+
     cat >&2 <<'MSG'
 No usable JDK found. This project needs a JDK 17 or newer to build - a JRE is
 not enough, because Gradle needs a compiler.
@@ -146,10 +198,10 @@ Install one:
 
 Then re-run, or set JAVA_HOME yourself to a directory containing bin/javac.
 MSG
-    unset -f _is_jdk _jdk_is_new_enough _jdk_rank _consider _try_jdk _resolve_link _find_jdk
-unset _best _best_rank
+    unset -f _is_jdk _jdk_is_new_enough _jdk_rank _consider _try_jdk _resolve_link _missing_tools _find_jdk
+unset _best _best_rank _incomplete
     return 1 2>/dev/null || exit 1
 fi
 
-unset -f _is_jdk _jdk_is_new_enough _jdk_rank _consider _try_jdk _resolve_link _find_jdk
-unset _best _best_rank
+unset -f _is_jdk _jdk_is_new_enough _jdk_rank _consider _try_jdk _resolve_link _missing_tools _find_jdk
+unset _best _best_rank _incomplete

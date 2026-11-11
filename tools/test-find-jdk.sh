@@ -86,7 +86,12 @@ out=$(env -u JAVA_HOME PATH="$NOJDK_BIN" bash -c ". $FIX/find-jdk-nojdk.sh" 2>&1
 mkdir -p "$FIX/roots/java-25-ea/bin" "$FIX/roots/java-21/bin"
 printf '#!/bin/sh\necho "javac 25.0.5-ea"\n' > "$FIX/roots/java-25-ea/bin/javac"
 printf '#!/bin/sh\necho "javac 21.0.8"\n'    > "$FIX/roots/java-21/bin/javac"
-chmod +x "$FIX/roots/java-25-ea/bin/javac" "$FIX/roots/java-21/bin/javac"
+# Gradle wants javadoc and jar too, so a fixture must carry them to count.
+for _t in javadoc jar; do
+    printf '#!/bin/sh\nexit 0\n' > "$FIX/roots/java-25-ea/bin/$_t"
+    printf '#!/bin/sh\nexit 0\n' > "$FIX/roots/java-21/bin/$_t"
+done
+chmod +x "$FIX/roots/java-25-ea/bin/"* "$FIX/roots/java-21/bin/"*
 
 sed -e "s#/usr/lib/jvm/\*/#$FIX/roots/*/#" \
     -e "s#/usr/java/\*/#$FIX/empty/*/#" \
@@ -107,6 +112,35 @@ picked=$(env -u JAVA_HOME PATH="$NOJDK_BIN" bash -c ". $FIX/find-jdk-roots.sh >/
 [ "$picked" = "$FIX/roots/java-25-ea" ] \
     && ok "an early-access build is still used when nothing else exists" \
     || bad "an early-access build is still used when nothing else exists" "picked ${picked:-none}"
+
+# 9. An installation with javac but no javadoc/jar. Gradle refuses these, so
+#    this must too rather than handing Gradle something it will reject.
+mkdir -p "$FIX/javac-only/bin"
+ln -s "$REAL_JDK/bin/javac" "$FIX/javac-only/bin/javac"
+[ "$(selected "$FIX/javac-only")" = "$REAL_JDK" ] \
+    && ok "an install with javac but no javadoc/jar is rejected" \
+    || bad "an install with javac but no javadoc/jar is rejected" "got $(selected "$FIX/javac-only")"
+
+# 10. When such an install is the only one, say what is missing. Reporting
+#     "no JDK found" on a machine that clearly has javac sends people in circles.
+mkdir -p "$FIX/onlypartial/java-25/bin"
+printf '#!/bin/sh\necho "javac 25.0.5"\n' > "$FIX/onlypartial/java-25/bin/javac"
+chmod +x "$FIX/onlypartial/java-25/bin/javac"
+sed -e "s#/usr/lib/jvm/\*/#$FIX/onlypartial/*/#" \
+    -e "s#/usr/java/\*/#$FIX/empty/*/#" \
+    -e "s#/opt/java/\*/#$FIX/empty/*/#" \
+    -e "s#/Library/Java/JavaVirtualMachines/\*/Contents/Home/#$FIX/empty/*/#" \
+    -e 's#"$HOME"/.sdkman/candidates/java/\*/#'"$FIX"'/empty/*/#' \
+    -e 's#"$HOME"/.jdks/\*/#'"$FIX"'/empty/*/#' \
+    -e 's#\[ -x /usr/libexec/java_home \]#false#' \
+    tools/find-jdk.sh > "$FIX/find-jdk-partial.sh"
+out=$(env -u JAVA_HOME PATH="$NOJDK_BIN" bash -c ". $FIX/find-jdk-partial.sh" 2>&1); rc=$?
+{ [ "$rc" -ne 0 ] \
+  && printf '%s' "$out" | grep -q 'incomplete' \
+  && printf '%s' "$out" | grep -q 'javadoc' \
+  && printf '%s' "$out" | grep -q 'jar'; } \
+    && ok "an incomplete install is named, with the missing tools" \
+    || bad "an incomplete install is named, with the missing tools" "rc=$rc out=$(printf '%s' "$out" | head -2 | tr '\n' ' ')"
 
 echo
 if [ "$FAIL" -eq 0 ]; then echo "ALL PASS ($PASS)"; else echo "$FAIL FAILURE(S), $PASS passed"; fi

@@ -3,6 +3,23 @@
 All notable changes to this project are recorded here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.0.4] — 2026-11-11
+
+### Fixed
+
+- **The JDK lookup checked only `javac`, so it could hand Gradle an
+  installation Gradle then refused.** Gradle decides whether an installation
+  can compile by checking that `javac`, `javadoc` *and* `jar` are all present —
+  it never runs them. An installation with a working `javac` but no `javadoc`
+  or `jar` is rejected with *"does not provide the required capabilities:
+  [JAVA_COMPILER]"*, which reads as though the compiler is missing when it is
+  not. The lookup now requires the same three tools Gradle does.
+
+- When no complete JDK is found but an incomplete one exists, the failure now
+  names that installation and which tools it is missing, with the `apt` command
+  to repair it. Previously it reported "no JDK found" on machines that visibly
+  had a working `javac`, which sent people in circles.
+
 ## [1.0.3] — 2026-11-11
 
 ### Changed
