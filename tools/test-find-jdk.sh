@@ -25,6 +25,18 @@ selected() {
         || printf 'none'
 }
 
+# True when a bad candidate is rejected in favour of some genuinely usable JDK.
+#
+# Deliberately does not demand a specific path: CI runners carry more than one
+# JDK (a tool-cache Temurin plus a distro one), so "falls through to $REAL_JDK"
+# fails there even though the behaviour is right. What matters is that the
+# fixture was not chosen and whatever was chosen can actually build.
+falls_through() {
+    local picked; picked=$(selected "$1")
+    [ -n "$picked" ] && [ "$picked" != "none" ] && [ "$picked" != "$1" ] \
+        && [ -x "$picked/bin/javac" ] && [ -x "$picked/bin/javadoc" ] && [ -x "$picked/bin/jar" ]
+}
+
 # 1. A genuine JDK is kept as-is.
 [ "$(selected "$REAL_JDK")" = "$REAL_JDK" ] \
     && ok "a real JDK on JAVA_HOME is honoured" \
@@ -32,9 +44,10 @@ selected() {
 
 # 2. A path that does not exist falls through. This broke the documented build
 #    command on every machine whose JDK directory was named differently.
-[ "$(selected /usr/lib/jvm/java-21-openjdk-does-not-exist)" = "$REAL_JDK" ] \
+falls_through /usr/lib/jvm/java-21-openjdk-does-not-exist \
     && ok "a nonexistent JAVA_HOME falls through to a real JDK" \
-    || bad "a nonexistent JAVA_HOME falls through to a real JDK"
+    || bad "a nonexistent JAVA_HOME falls through to a real JDK" \
+           "got $(selected /usr/lib/jvm/java-21-openjdk-does-not-exist)"
 
 # 3. A JRE whose javac is an alternatives symlink into another JDK. It runs, so
 #    a naive check passes, but Gradle rejects the installation for having no
@@ -42,7 +55,7 @@ selected() {
 mkdir -p "$FIX/jre-with-borrowed-javac/bin"
 ln -s "$REAL_JDK/bin/java"  "$FIX/jre-with-borrowed-javac/bin/java"
 ln -s "$REAL_JDK/bin/javac" "$FIX/jre-with-borrowed-javac/bin/javac"
-[ "$(selected "$FIX/jre-with-borrowed-javac")" = "$REAL_JDK" ] \
+falls_through "$FIX/jre-with-borrowed-javac" \
     && ok "a JRE borrowing another JDK's javac is rejected" \
     || bad "a JRE borrowing another JDK's javac is rejected" "got $(selected "$FIX/jre-with-borrowed-javac")"
 
@@ -50,17 +63,17 @@ ln -s "$REAL_JDK/bin/javac" "$FIX/jre-with-borrowed-javac/bin/javac"
 mkdir -p "$FIX/stub/bin"
 printf '#!/bin/sh\necho "Unable to find any JVMs matching version." >&2\nexit 1\n' > "$FIX/stub/bin/javac"
 chmod +x "$FIX/stub/bin/javac"
-[ "$(selected "$FIX/stub")" = "$REAL_JDK" ] \
+falls_through "$FIX/stub" \
     && ok "a javac stub that fails to run is rejected" \
-    || bad "a javac stub that fails to run is rejected"
+    || bad "a javac stub that fails to run is rejected" "got $(selected "$FIX/stub")"
 
 # 5. A JDK older than the project's release target.
 mkdir -p "$FIX/old/bin"
 printf '#!/bin/sh\necho "javac 11.0.21"\n' > "$FIX/old/bin/javac"
 chmod +x "$FIX/old/bin/javac"
-[ "$(selected "$FIX/old")" = "$REAL_JDK" ] \
+falls_through "$FIX/old" \
     && ok "a JDK older than 17 is rejected" \
-    || bad "a JDK older than 17 is rejected"
+    || bad "a JDK older than 17 is rejected" "got $(selected "$FIX/old")"
 
 # 6. Nothing installed at all: must explain itself and exit non-zero rather
 #    than silently handing Gradle something unusable.
@@ -117,7 +130,7 @@ picked=$(env -u JAVA_HOME PATH="$NOJDK_BIN" bash -c ". $FIX/find-jdk-roots.sh >/
 #    this must too rather than handing Gradle something it will reject.
 mkdir -p "$FIX/javac-only/bin"
 ln -s "$REAL_JDK/bin/javac" "$FIX/javac-only/bin/javac"
-[ "$(selected "$FIX/javac-only")" = "$REAL_JDK" ] \
+falls_through "$FIX/javac-only" \
     && ok "an install with javac but no javadoc/jar is rejected" \
     || bad "an install with javac but no javadoc/jar is rejected" "got $(selected "$FIX/javac-only")"
 

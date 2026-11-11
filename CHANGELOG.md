@@ -9,6 +9,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 - MIT licence.
 
+### Fixed
+
+- `tools/test-find-jdk.sh` assumed a machine had exactly one JDK, asserting that
+  a rejected candidate fell through to one specific path. CI runners carry two
+  (a tool-cache Temurin and a distro one), so the amd64 job failed even though
+  the lookup behaved correctly. The assertions now require only that the
+  fixture was rejected in favour of something that can genuinely build.
+
 ## [1.0.5] — 2026-11-11
 
 ### Added
