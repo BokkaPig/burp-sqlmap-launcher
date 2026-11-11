@@ -161,3 +161,12 @@ Be honest about this in any handoff:
 - Any path that names a JDK, an architecture or a distribution layout belongs in
   `tools/find-jdk.sh`, not in a script, a doc or a workflow file. That file is
   the single place allowed to know where JDKs live.
+- **A Gradle daemon caches what it decided about its own JVM.** If it probed
+  that JVM while the JDK was part-installed, it serves "no compiler" forever
+  after, and the build fails with *"does not provide the required capabilities:
+  [JAVA_COMPILER]"* however many times the JDK is reinstalled. The giveaway is a
+  failure in milliseconds. `./gradlew --stop` fixes it; `build.sh` now detects
+  this and retries once automatically. Before blaming the JDK, ask Gradle what
+  it actually sees: `./gradlew -q javaToolchains` prints an `Is JDK:` line per
+  installation. Reach for that diagnostic *first* — this one cost four wrong
+  theories because the environment was inferred rather than queried.

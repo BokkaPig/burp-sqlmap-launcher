@@ -3,6 +3,24 @@
 All notable changes to this project are recorded here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.0.5] — 2026-11-11
+
+### Added
+
+- **`build.sh` now recovers from a stale Gradle daemon by itself.** A daemon
+  caches what it decided about the JVM it runs on. If it ever probed that JVM
+  while the JDK was part-installed, it keeps serving "no compiler", so the build
+  fails with *"does not provide the required capabilities: [JAVA_COMPILER]"*
+  even after the JDK is repaired — and keeps failing however many times the
+  packages are reinstalled. The giveaway is that it fails in milliseconds.
+
+  `build.sh` now spots that error, stops the daemon, and retries once. If it
+  still fails, it points at `./gradlew -q javaToolchains`, which prints Gradle's
+  own `Is JDK:` verdict for every installation it can find — the diagnostic that
+  finally identified this, after four wrong theories about the JDK itself.
+
+- Troubleshooting entries for it in the README and AGENTS.md.
+
 ## [1.0.4] — 2026-11-11
 
 ### Fixed

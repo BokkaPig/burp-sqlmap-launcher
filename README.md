@@ -142,6 +142,22 @@ The extension lands at `build/burp-sqlmap-launcher.jar`.
 > export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
 > ```
 
+> **If the build fails with** *"does not provide the required capabilities:
+> [JAVA_COMPILER]"* **and keeps failing after you fix or reinstall the JDK**,
+> suspect a stale Gradle daemon rather than the JDK. A daemon caches what it
+> decided about its JVM, so if it ever probed one while the JDK was
+> part-installed it keeps serving that verdict. The giveaway is that the build
+> fails in milliseconds. `build.sh` now detects this and retries once by itself;
+> to do it by hand:
+> ```sh
+> ./gradlew --stop && ./build.sh
+> ```
+> To see Gradle's own verdict on every JVM it can find, including an
+> `Is JDK: true/false` line for each:
+> ```sh
+> ./gradlew -q javaToolchains
+> ```
+
 **Load it:** Burp → **Extensions** → **Installed** → **Add** → extension type
 **Java** → select the jar. A top-level **sqlmap** tab appears.
 
