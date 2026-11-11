@@ -64,22 +64,60 @@ _try_jdk() {
     return 1
 }
 
+# How good a build JDK this is; lower wins. Newest is NOT best: Gradle's
+# support lags new JDK releases, and Debian ships Java 25 as an early-access
+# build ("25.0.5-ea") that build tools can mis-probe. A stable LTS is the safer
+# default for compiling, whatever else is installed.
+#
+#   0  Java 21 - LTS, well supported by the Gradle version pinned here
+#   1  Java 17 - the project's release target
+#   2  any other stable release
+#   3  early-access builds, used only when nothing else exists
+_jdk_rank() {
+    local version_output major
+    version_output=$("$1/bin/javac" -version 2>&1)
+    major=$(printf '%s' "$version_output" | sed -n 's/^javac \([0-9]*\).*/\1/p')
+
+    case "$version_output" in
+        *-ea*|*-EA*) echo 3; return ;;
+    esac
+    case "$major" in
+        21) echo 0 ;;
+        17) echo 1 ;;
+        *)  echo 2 ;;
+    esac
+}
+
+# Keeps the best candidate seen so far in _best/_best_rank.
+_consider() {
+    [ -n "${1:-}" ] || return 0
+    _is_jdk "$1" || return 0
+    _jdk_is_new_enough "$1" || return 0
+
+    local rank; rank=$(_jdk_rank "$1")
+    if [ -z "$_best" ] || [ "$rank" -lt "$_best_rank" ]; then
+        _best="$1"; _best_rank="$rank"
+    fi
+}
+
 _find_jdk() {
-    # 1. An already-valid JAVA_HOME wins; the caller meant it.
+    # An explicitly set, valid JAVA_HOME wins outright; the caller meant it.
     _try_jdk "${JAVA_HOME:-}" && return 0
 
-    # 2. Whatever owns javac on PATH is usually the intended JDK.
+    _best=""; _best_rank=99
+
+    # Whatever owns javac on PATH is usually the intended JDK.
     if command -v javac >/dev/null 2>&1; then
-        _try_jdk "$(dirname "$(dirname "$(_resolve_link "$(command -v javac)")")")" && return 0
+        _consider "$(dirname "$(dirname "$(_resolve_link "$(command -v javac)")")")"
     fi
 
-    # 3. macOS keeps an authoritative registry of installed JDKs.
+    # macOS keeps an authoritative registry of installed JDKs.
     if [ -x /usr/libexec/java_home ]; then
-        _try_jdk "$(/usr/libexec/java_home -v 17+ 2>/dev/null)" && return 0
+        _consider "$(/usr/libexec/java_home -v 17+ 2>/dev/null)"
     fi
 
-    # 4. Common install roots. Highest version last so it is the one kept.
-    local candidate found=""
+    # Common install roots.
+    local candidate
     for candidate in \
         /usr/lib/jvm/*/ \
         /usr/java/*/ \
@@ -88,11 +126,10 @@ _find_jdk() {
         "$HOME"/.sdkman/candidates/java/*/ \
         "$HOME"/.jdks/*/
     do
-        candidate="${candidate%/}"
-        if _is_jdk "$candidate" && _jdk_is_new_enough "$candidate"; then found="$candidate"; fi
+        _consider "${candidate%/}"
     done
-    _try_jdk "$found" && return 0
 
+    _try_jdk "$_best" && return 0
     return 1
 }
 
@@ -109,8 +146,10 @@ Install one:
 
 Then re-run, or set JAVA_HOME yourself to a directory containing bin/javac.
 MSG
-    unset -f _is_jdk _jdk_is_new_enough _try_jdk _resolve_link _find_jdk
+    unset -f _is_jdk _jdk_is_new_enough _jdk_rank _consider _try_jdk _resolve_link _find_jdk
+unset _best _best_rank
     return 1 2>/dev/null || exit 1
 fi
 
-unset -f _is_jdk _jdk_is_new_enough _try_jdk _resolve_link _find_jdk
+unset -f _is_jdk _jdk_is_new_enough _jdk_rank _consider _try_jdk _resolve_link _find_jdk
+unset _best _best_rank

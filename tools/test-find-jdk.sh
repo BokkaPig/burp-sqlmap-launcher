@@ -81,6 +81,33 @@ out=$(env -u JAVA_HOME PATH="$NOJDK_BIN" bash -c ". $FIX/find-jdk-nojdk.sh" 2>&1
     && ok "no JDK at all: explains itself and fails" \
     || bad "no JDK at all: explains itself and fails" "rc=$rc"
 
+# 7. Given a choice, a stable LTS beats a newer early-access build. Debian
+#    ships Java 25 as "25.0.5-ea", and build tools can mis-probe EA builds.
+mkdir -p "$FIX/roots/java-25-ea/bin" "$FIX/roots/java-21/bin"
+printf '#!/bin/sh\necho "javac 25.0.5-ea"\n' > "$FIX/roots/java-25-ea/bin/javac"
+printf '#!/bin/sh\necho "javac 21.0.8"\n'    > "$FIX/roots/java-21/bin/javac"
+chmod +x "$FIX/roots/java-25-ea/bin/javac" "$FIX/roots/java-21/bin/javac"
+
+sed -e "s#/usr/lib/jvm/\*/#$FIX/roots/*/#" \
+    -e "s#/usr/java/\*/#$FIX/empty/*/#" \
+    -e "s#/opt/java/\*/#$FIX/empty/*/#" \
+    -e "s#/Library/Java/JavaVirtualMachines/\*/Contents/Home/#$FIX/empty/*/#" \
+    -e 's#"$HOME"/.sdkman/candidates/java/\*/#'"$FIX"'/empty/*/#' \
+    -e 's#"$HOME"/.jdks/\*/#'"$FIX"'/empty/*/#' \
+    -e 's#\[ -x /usr/libexec/java_home \]#false#' \
+    tools/find-jdk.sh > "$FIX/find-jdk-roots.sh"
+picked=$(env -u JAVA_HOME PATH="$NOJDK_BIN" bash -c ". $FIX/find-jdk-roots.sh >/dev/null 2>&1 && printf '%s' \"\$JAVA_HOME\"")
+[ "$picked" = "$FIX/roots/java-21" ] \
+    && ok "a stable LTS is preferred over a newer early-access build" \
+    || bad "a stable LTS is preferred over a newer early-access build" "picked ${picked:-none}"
+
+# 8. If an early-access build is all there is, use it rather than refusing.
+rm -rf "$FIX/roots/java-21"
+picked=$(env -u JAVA_HOME PATH="$NOJDK_BIN" bash -c ". $FIX/find-jdk-roots.sh >/dev/null 2>&1 && printf '%s' \"\$JAVA_HOME\"")
+[ "$picked" = "$FIX/roots/java-25-ea" ] \
+    && ok "an early-access build is still used when nothing else exists" \
+    || bad "an early-access build is still used when nothing else exists" "picked ${picked:-none}"
+
 echo
 if [ "$FAIL" -eq 0 ]; then echo "ALL PASS ($PASS)"; else echo "$FAIL FAILURE(S), $PASS passed"; fi
 exit $(( FAIL > 0 ))

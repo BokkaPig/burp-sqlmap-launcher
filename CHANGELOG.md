@@ -3,6 +3,17 @@
 All notable changes to this project are recorded here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.0.3] — 2026-11-11
+
+### Changed
+
+- **The JDK lookup no longer just takes the newest JDK it finds.** Gradle's
+  support lags new JDK releases, and Debian ships Java 25 as an early-access
+  build (`25.0.5-ea`) that build tools can mis-probe. Selection now prefers a
+  stable LTS — Java 21, then 17, then any other stable release — and falls back
+  to an early-access build only when nothing else is installed. An explicitly
+  set, valid `JAVA_HOME` still wins outright.
+
 ## [1.0.2] — 2026-11-11
 
 ### Fixed
