@@ -236,9 +236,7 @@ something misbehaves, check **Extensions → Errors** first.
 
 ## Licence
 
-No licence has been chosen yet. Until one is added, default copyright applies and
-others have no rights to reuse this. Add a `LICENSE` file before publishing if
-you want people to be able to use it.
+[MIT](LICENSE) — use it, change it, ship it, just keep the copyright notice.
 
 ---
 

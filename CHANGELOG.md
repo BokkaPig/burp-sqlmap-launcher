@@ -3,6 +3,12 @@
 All notable changes to this project are recorded here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.0.6] — 2026-11-11
+
+### Added
+
+- MIT licence.
+
 ## [1.0.5] — 2026-11-11
 
 ### Added
